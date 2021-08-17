@@ -219,7 +219,7 @@ SOCIAL_AUTH_PIPELINE = (
 
 # ----------------------------------------------------------------------------------------------------------------
 
-
+'''
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -245,4 +245,27 @@ LOGGING = {
             'propagate': True
         },
     }
+}
+'''
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '%(asctime)s %(levelname)s %(name)s %(message)s'
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'DEBUG',
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'info.log'),
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['file'],
+            'level': 'DEBUG',
+        },
+    },
 }
