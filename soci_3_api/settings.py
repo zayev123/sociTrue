@@ -32,7 +32,7 @@ SECRET_KEY = 'django-insecure-w#-tre%452pmg#6h34bi)gzw22_5)yz274gxvno@wc-31m$-%u
 DEBUG = True
 
 #ALLOWED_HOSTS = ['*']
-#ALLOWED_HOSTS = ['localhost', '192.168.10.11']
+#ALLOWED_HOSTS = ['localhost', '192.168.8.103']
 ALLOWED_HOSTS = ['152.228.215.143', 'socializus.eu', 'www.socializus.eu']
 
 AUTH_USER_MODEL = 'soci3LApp.UserInfo'
@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'accounts',
     'social_django',
     'chatSoci',
-    'corsheaders',
     # 'flutter_web_app',
 ]
 MIDDLEWARE = [
@@ -67,10 +66,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'social_django.middleware.SocialAuthExceptionMiddleware',
-    'corsheaders.middleware.CorsMiddleware'
 ]
 
-CORS_ORIGIN_ALLOW_ALL = True
 
 
 ROOT_URLCONF = 'soci_3_api.urls'
@@ -246,7 +243,7 @@ LOGGING = {
         },
     }
 }
-'''
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -269,3 +266,4 @@ LOGGING = {
         },
     },
 }
+'''
