@@ -11,6 +11,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from chatSoci.serializers import ChatSerializer, ChatUpdtSerializer, MessageSerializer
 from channels.db import database_sync_to_async
 from knox.auth import TokenAuthentication
+import sys
 # '''
 knoxAuth = TokenAuthentication()
 
@@ -18,16 +19,12 @@ knoxAuth = TokenAuthentication()
 class MyChatsCnsmr(AsyncWebsocketConsumer):
 
     myUser = None
-    myChats = None
     theKwargs = None
     personalRoom = None
     personalGroup = None
-    chatRoom = None
-    chatGroup = None
-    theParticipants = None
-    jsonPrtcpnts = None
+    chatRoom = -20
     userIds = None
-
+    friendId = -25
     theChat = None
 
     @database_sync_to_async
@@ -39,8 +36,8 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def fetch_my_chats(self):
-        self.myChats = self.myUser.chatModels.all()
-        myJsonChats = ChatSerializer(self.myChats, context={
+        myChats = self.myUser.chatModels.all()
+        myJsonChats = ChatSerializer(myChats, context={
                                      'myId': self.theKwargs['profId']}, many=True).data
 
         return myJsonChats
@@ -48,19 +45,46 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
     @database_sync_to_async
     def fetch_my_chat(self, newMsg):
         myChat = self.theChat
+        theParticipants = self.theChat.chatParticipants.all()
+        self.userIds = list(theParticipants.values('id'))
+        for userId in self.userIds:
+            myChat.newMessagesFor.add(userId['id'])
+        myChat.save()
+        jsonPrtcpnts = ParticipantsSerializer(
+            theParticipants, many=True).data
         myJsonChat = ChatUpdtSerializer(myChat, context={
-            'myId': self.theKwargs['profId'], 'new_msg': newMsg, 'prtcpnts': self.jsonPrtcpnts}).data
+            'myId': self.theKwargs['profId'], 'new_msg': newMsg, 'prtcpnts': jsonPrtcpnts}).data
 
         return myJsonChat
 
     @database_sync_to_async
     def get_chat(self):
-        chatId = self.chatRoom
-        self.theChat = self.myChats.get(id=chatId)
-        self.theParticipants = self.theChat.chatParticipants.all()
-        self.jsonPrtcpnts = ParticipantsSerializer(
-            self.theParticipants, many=True).data
-        self.userIds = list(self.theParticipants.values('id'))
+        if self.theChat == None:
+            chtId = -5
+        else:
+            chtId = self.theChat.id
+        if self.chatRoom != chtId:
+            chatId = self.chatRoom
+            self.theChat = self.myUser.chatModels.all().get(id=chatId)
+
+    @database_sync_to_async
+    def chckFrndCht(self, friendId):
+        if self.theChat == None:
+            chtId = -5
+        else:
+            chtId = self.theChat.id
+        if self.friendId != friendId:
+            laChats = self.myUser.chatModels.all()
+            for laChat in laChats:
+                if laChat.chatParticipants.all().filter(id = friendId):
+                    self.friendId = friendId
+                    self.theChat = laChat
+                    self.chatRoom = self.theChat.id
+                    return True
+            else:
+                return False
+        else:
+            return True
 
     @database_sync_to_async
     def fetch_messages(self, strtMssg, endMssg):
@@ -72,9 +96,8 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
     @database_sync_to_async
     def create_message(self, data):
         msgData = data['message']
-        sender = self.theParticipants.get(id=msgData['author'])
         theNewMessage = ChatMessage.objects.create(
-            author=sender,
+            author=msgData['author'],
             forChat=self.theChat,
             messageContent=msgData['messageContent'],
             imageType=msgData['imageType'],
@@ -84,9 +107,6 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
         # i should fetch the chat and send the chat here instead
         rlTmeMsgImage(theNewMessage, msgData, 'mssg')
         myJsonMessage = MessageSerializer(theNewMessage).data
-        for userId in self.userIds:
-            self.theChat.newMessagesFor.add(userId['id'])
-        self.theChat.save()
         return myJsonMessage
 
     @database_sync_to_async
@@ -105,6 +125,21 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
         myJsonChat = ChatSerializer(theNewChat, context={
             'myId': self.theKwargs['profId']}).data
         return myJsonChat
+
+    @database_sync_to_async
+    def create_frnd_Chat(self, data):
+        chtData = data['chat']
+        theNewChat = ChatModel.objects.create(
+            chatName=chtData['chatName'],
+            isGroup=chtData['isGroup'],
+            imageType=chtData['imageType'],
+        )
+        rlTmeMsgImage(theNewChat, chtData, 'cht')
+        for userId in chtData['chatParticipants']:
+            theNewChat.chatParticipants.add(userId)
+        theNewChat.save()
+        self.theChat = theNewChat
+        self.chatRoom = self.theChat.id
 
     @database_sync_to_async
     def update_for_messages(self):
@@ -158,12 +193,7 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
                 )
         elif data['command'] == 'enter_chat_room':
             self.chatRoom = data['chatId']
-            self.chatGroup = 'chat_%s' % self.chatRoom
             await self.get_chat()
-            await self.channel_layer.group_add(
-                self.chatGroup,
-                self.channel_name
-            )
             strtMssg = 0
             endMssg = 10
             myData = await self.fetch_messages(strtMssg, endMssg)
@@ -171,10 +201,42 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
                 self.personalGroup,
                 {
                     'type': 'get_messages',
-                    'msgs': myData
+                    'msgs': myData,
+                    'isInitiated': True,
+
                 }
             )
+        elif data['command'] == 'enter_friend_room':
+            friendId = data['friendId']
+            isChat = await self.chckFrndCht(friendId)
+            if isChat:
+                strtMssg = 0
+                endMssg = 10
+                myData = await self.fetch_messages(strtMssg, endMssg)
+                await self.channel_layer.group_send(
+                    self.personalGroup,
+                    {
+                        'type': 'get_messages',
+                        'msgs': myData,
+                        'isInitiated': True,
+                    }
+                )
+            else:
+                await self.channel_layer.group_send(
+                    self.personalGroup,
+                    {
+                        'type': 'get_messages',
+                        'msgs': [],
+                        'isInitiated': False,
+                    }
+                )
         elif data['command'] == 'create_message':
+            newModel = False
+            if data['isInitiated'] == False:
+                await self.create_frnd_Chat(data)
+                newModel =True
+            else:
+                newModel = False
             myData = await self.create_message(data)
             chtData = await self.fetch_my_chat(myData)
             for userId in self.userIds:
@@ -184,15 +246,12 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
                     prsnlGroup,
                     {
                         'type': 'update_chats',
-                        'chat': chtData
+                        'chat': chtData,
+                        'isNewModel': newModel
                     }
                 )
         elif data['command'] == 'leave_room':
             await self.update_for_messages()
-            await self.channel_layer.group_discard(
-                self.chatGroup,
-                self.channel_name
-            )
 
     # Receive message from room group
     async def new_chat(self, event):
@@ -201,7 +260,8 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
 
     async def update_chats(self, event):
         myData = event['chat']
-        await self.send(text_data=json.dumps({'type': 'update_chats', 'chats': [myData]}))
+        isNewChat = event['isNewModel']
+        await self.send(text_data=json.dumps({'type': 'update_chats', 'chats': [myData], 'isNewChat': isNewChat}))
 
     async def load_chats(self, event):
         myData = event['chats']
@@ -209,7 +269,8 @@ class MyChatsCnsmr(AsyncWebsocketConsumer):
 
     async def get_messages(self, event):
         myData = event['msgs']
-        await self.send(text_data=json.dumps({'type': 'get_messages', 'chtMessages': myData}))
+        isInitiated = event['isInitiated']
+        await self.send(text_data=json.dumps({'type': 'get_messages', 'chtMessages': myData, 'isInitiated': isInitiated, 'chatRoom': self.chatRoom}))
 
     async def new_message(self, event):
         myData = [event['message']]

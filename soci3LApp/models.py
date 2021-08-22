@@ -248,8 +248,7 @@ class ChatModel(models.Model):
 
 
 class ChatMessage(models.Model):
-    author = models.ForeignKey(
-        UserInfo, related_name='chatMessages', on_delete=models.CASCADE)
+    author = models.IntegerField()
     forChat = models.ForeignKey(
         ChatModel, related_name='chatMessages', on_delete=models.CASCADE)
     createdAt = models.DateTimeField(auto_now_add=True)
